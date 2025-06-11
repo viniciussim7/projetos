@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Geometry Dash - O Monolito de Código!</title>
+    
+    <style>
+        body {
+            background-color: #333;
+            color: #eee;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #00ffff;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        canvas {
+            border: 2px solid #00ffff;
+            background-color: #000;
+            margin-top: 10px;
+        }
+        #info-panel {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            font-size: 1.1em;
+            flex-wrap: wrap; /* Para telas menores */
+            justify-content: center;
+        }
+        .info-box {
+            background-color: #444;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+        }
+        .chart-container {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap; /* Para telas menores */
+            gap: 20px;
+            justify-content: center;
+        }
+        .chart-box {
+            background-color: #222;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+            text-align: center;
+        }
+        .chart-box h3 {
+            color: #ff00ff;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        #fitnessChartCanvas {
+            border: 1px solid #00ff00;
+        }
+        #neuralNetworkCanvas {
+            border: 1px solid #ff00ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Geometry Dash</h1>
+
+    <div id="info-panel">
+        <div class="info-box">Geração: <span id="generation">0</span></div>
+        <div class="info-box">Melhor Fitness: <span id="highestFitness">0.00</span></div>
+        <div class="info-box">Vivos: <span id="aliveCount">0</span></div>
+        <div class="info-box">Fase Atual: <span id="currentPhaseDisplay">Espinhos</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div class="chart-container">
+        <div class="chart-box">
+            <h3>Gráfico de Fitness</h3>
+            <canvas id="fitnessChartCanvas" width="400" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Rede Neural do Melhor</h3>
+            <canvas id="neuralNetworkCanvas" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // neuralNetwork.js
+        class Neuron {
+            constructor(numInputs) {
+                this.weights = [];
+                for (let i = 0; i < numInputs; i++) {
+                    this.weights.push(Math.random() * 2 - 1);
+                }
+                this.bias = Math.random() * 2 - 1;
+            }
+
+            activate(inputs) {
+                if (inputs.length !== this.weights.length) {
+                    throw new Error("Número de entradas não corresponde ao número de pesos do neurônio.");
+                }
+                let sum = this.bias;
+                for (let i = 0; i < inputs.length; i++) {
+                    sum += inputs[i] * this.weights[i];
+                }
+                return 1 / (1 + Math.exp(-sum)); // Função de ativação Sigmoid
+            }
+        }
+
+        class Layer {
+            constructor(numNeurons, numInputsPerNeuron) {
+                this.neurons = [];
+                for (let i = 0; i < numNeurons; i++) {
+                    this.neurons.push(new Neuron(numInputsPerNeuron));
+                }
+            }
+
+            feedForward(inputs) {
+                return this.neurons.map(neuron => neuron.activate(inputs));
+            }
+        }
+
+        class NeuralNetwork {
+            constructor(inputNodes, hiddenNodes, outputNodes) {
+                this.weights_ih = new Matrix(hiddenNodes, inputNodes);
+                this.weights_ho = new Matrix(outputNodes, hiddenNodes);
+
+                this.bias_h = new Matrix(hiddenNodes, 1);
+                this.bias_o = new Matrix(outputNodes, 1);
+
+                this.weights_ih.randomize();
+                this.weights_ho.randomize();
+                this.bias_h.randomize();
+                this.bias_o.randomize();
+            }
+
+            predict(input_array) {
+                // Input to Hidden
+                let inputs = Matrix.fromArray(input_array);
+                let hidden = Matrix.multiply(this.weights_ih, inputs);
+                hidden.add(this.bias_h);
+                hidden.map(sigmoid);
+
+                // Hidden to Output
+                let output = Matrix.multiply(this.weights_ho, hidden);
+                output.add(this.bias_o);
+                output.map(sigmoid); // Sigmoid para a saída
+                return output.toArray();
+            }
+
+            clone() {
+                let clone = new NeuralNetwork(this.weights_ih.cols, this.weights_ih.rows, this.weights_ho.rows);
+                clone.weights_ih = this.weights_ih.copy();
+                clone.weights_ho = this.weights_ho.copy();
+                clone.bias_h = this.bias_h.copy();
+                clone.bias_o = this.bias_o.copy();
+                return clone;
+            }
+
+            mutate(mutationRate, mutationAmount) {
+                const mutateMatrix = (matrix) => {
+                    matrix.map(val => {
+                        if (Math.random() < mutationRate) {
+                            return val + (Math.random() * 2 - 1) * mutationAmount;
+                        }
+                        return val;
+                    });
+                };
+                mutateMatrix(this.weights_ih);
+                mutateMatrix(this.weights_ho);
+                mutateMatrix(this.bias_h);
+                mutateMatrix(this.bias_o);
+            }
+        }
+
+        function sigmoid(x) {
+            return 1 / (1 + Math.exp(-x));
+        }
+
+        // Esta função não é usada, mas é comum em redes neurais para backpropagation
+        function dsigmoid(y) {
+            return y * (1 - y);
+        }
+
+        class Matrix {
+            constructor(rows, cols) {
+                this.rows = rows;
+                this.cols = cols;
+                this.data = Array(this.rows).fill(0).map(() => Array(this.cols).fill(0));
+            }
+
+            static fromArray(arr) {
+                let m = new Matrix(arr.length, 1);
+                for (let i = 0; i < arr.length; i++) {
+                    m.data[i][0] = arr[i];
+                }
+                return m;
+            }
+
+            toArray() {
+                let arr = [];
+                for (let i = 0; i < this.rows; i++) {
+                    for (let j = 0; j < this.cols; j++) {
+                        arr.push(this.data[i][j]);
+                    }
+                }
+                return arr;
+            }
+
+            randomize() {
+                for (let i = 0; i < this.rows; i++) {
+                    for (let j = 0; j < this.cols; j++) {
+                        this.data[i][j] = Math.random() * 2 - 1; // Valores entre -1 e 1
+                    }
+                }
+            }
+
+            add(n) {
+                if (n instanceof Matrix) {
+                    if (this.rows !== n.rows || this.cols !== n.cols) {
+                        throw new Error("As dimensões das matrizes devem ser as mesmas para adição.");
+                    }
+                    for (let i = 0; i < this.rows; i++) {
+                        for (let j = 0; j < this.cols; j++) {
+                            this.data[i][j] += n.data[i][j];
+                        }
+                    }
+                } else {
+                    for (let i = 0; i < this.rows; i++) {
+                        for (let j = 0; j < this.cols; j++) {
+                            this.data[i][j] += n;
+                        }
+                    }
+                }
+            }
+
+            static multiply(a, b) {
+                if (a.cols !== b.rows) {
+                    console.error("Colunas de A devem ser iguais às linhas de B para multiplicação de matrizes.");
+                    return undefined;
+                }
+                let result = new Matrix(a.rows, b.cols);
+                for (let i = 0; i < result.rows; i++) {
+                    for (let j = 0; j < result.cols; j++) {
+                        let sum = 0;
+                        for (let k = 0; k < a.cols; k++) {
+                            sum += a.data[i][k] * b.data[k][j];
+                        }
+                        result.data[i][j] = sum;
+                    }
+                }
+                return result;
+            }
+
+            map(func) {
+                for (let i = 0; i < this.rows; i++) {
+                    for (let j = 0; j < this.cols; j++) {
+                        let val = this.data[i][j];
+                        this.data[i][j] = func(val);
+                    }
+                }
+            }
+
+            copy() {
+                let m = new Matrix(this.rows, this.cols);
+                for (let i = 0; i < this.rows; i++) {
+                    for (let j = 0; j < this.cols; j++) {
+                        m.data[i][j] = this.data[i][j];
+                    }
+                }
+                return m;
+            }
+        }
+
+
+        // game.js
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const fitnessChartCanvas = document.getElementById('fitnessChartCanvas');
+        const fitnessChartCtx = fitnessChartCanvas.getContext('2d');
+
+        const neuralNetworkCanvas = document.getElementById('neuralNetworkCanvas');
+        const neuralNetworkCtx = neuralNetworkCanvas.getContext('2d');
+
+        // --- Variáveis do Cenário ---
+        let hue = 0; // Não usado no momento, mas pode ser para efeitos de cor
+        const colorChangeSpeed = 0.0; // Não usado
+        const groundHeight = 20;
+        const obstacleSpeed = 5;
+        let backgroundOffset = 0;
+        const backgroundSpeedMultiplier = 0.5;
+
+        // Cores para Stereo Madness (Geometry Dash)
+        const playerColor = '#00ffff'; // Ciano/Azul claro
+        const spikeColor = '#ff0000';   // Vermelho
+        const solidBlockColor = '#ff0000'; // Vermelho (igual ao spike para simplicidade)
+        const platformColor = '#00ff00'; // Verde
+        const particleColor = '#00ffff'; // Ciano/Azul claro
+
+        const backgroundColor1 = '#00C8FF'; // Azul claro
+        const backgroundColor2 = '#0064C8'; // Azul escuro
+        const groundMainColor = '#0050A0'; // Azul petróleo
+        const groundLineColor = '#003A70'; // Azul muito escuro
+        const groundBlockColor = '#004080'; // Azul médio
+
+        // --- Obstáculos (definidos uma vez, copiados para cada geração) ---
+        const obstaclesByPhase = {
+            spikes: [
+                { type: 'spike', x: 600, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 900, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 940, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1200, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1400, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1440, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1700, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1950, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 1990, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 2030, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 2200, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 2300, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 2340, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+            ],
+            blocks: [
+                { type: 'solid_block', x: 600, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 800, y: canvas.height - groundHeight - 80, width: 40, height: 40 },
+                { type: 'solid_block', x: 1000, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'solid_block', x: 1040, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 1200, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 1350, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 1500, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'solid_block', x: 1700, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 1800, y: canvas.height - groundHeight - 80, width: 40, height: 40 },
+                { type: 'solid_block', x: 1900, y: canvas.height - groundHeight - 120, width: 40, height: 40 },
+                { type: 'platform', x: 2000, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 2040, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+            ],
+            both: [
+                { type: 'spike', x: 600, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 800, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 900, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'solid_block', x: 1000, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 1040, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 1200, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 1300, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 1450, y: canvas.height - groundHeight - 80, width: 40, height: 40 },
+                { type: 'spike', x: 1550, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'solid_block', x: 1700, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 1740, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 1850, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'solid_block', x: 2000, y: canvas.height - groundHeight - 80, width: 40, height: 80 },
+                { type: 'spike', x: 2100, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 2140, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 2300, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 2400, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 2550, y: canvas.height - groundHeight - 80, width: 40, height: 40 },
+                { type: 'spike', x: 2650, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 3000, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 3150, y: canvas.height - groundHeight - 40, width: 40, height: 40 }, 
+                { type: 'platform', x: 3300, y: canvas.height - groundHeight - 80, width: 40, height: 40 }, 
+                { type: 'platform', x: 3450, y: canvas.height - groundHeight - 120, width: 40, height: 40 }, 
+                { type: 'platform', x: 3600, y: canvas.height - groundHeight - 160, width: 40, height: 160 }, 
+                { type: 'spike', x: 3850, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'solid_block', x: 4000, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 4100, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'spike', x: 4250, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'spike', x: 4290, y: canvas.height - groundHeight - 20, width: 40, height: 20 },
+                { type: 'platform', x: 4500, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+                { type: 'platform', x: 4540, y: canvas.height - groundHeight - 40, width: 40, height: 40 },
+            ]
+        };
+
+        const phaseOrder = ['spikes', 'blocks', 'both'];
+        let currentPhaseIndex = 0;
+        let currentPhase = phaseOrder[currentPhaseIndex];
+
+        let currentGlobalObstacles = []; // Armazena os obstáculos da fase atual em jogo
+
+        const numParticles = 20;
+        const particleLife = 60; // Duração das partículas da explosão
+
+        const POPULATION_SIZE = 800; // O número de indivíduos (cubinhos) na população - CRÍTICO para o aprendizado!
+        const MUTATION_RATE = 0.5; // 10% de chance de um peso/viés ser mutado
+        const MUTATION_AMOUNT = 0.7; // Quão grande pode ser a mutação (entre -0.2 e +0.2)
+
+        const INPUT_NODES = 10; // 2 (velocidadeY, noChao) + 3*2 (dist_x, dist_y para 3 obstáculos) + 2 (previsao_colisao, dist_colisao)
+        const HIDDEN_NODES = 20; // Número de neurônios na camada oculta
+        const OUTPUT_NODES = 1; // Apenas 1 saída: Decisão de pular
+
+        let population = [];
+        let generation = 0;
+        let highestFitness = 0; // O melhor fitness já alcançado em todas as gerações
+        let bestPlayerEver = null; // A rede neural do melhor jogador de todos os tempos
+        let fitnessHistory = []; // Para o gráfico de fitness
+
+        const JUMP_PENALTY = 10; // Penalidade no fitness por cada pulo
+
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, backgroundColor1);
+            gradient.addColorStop(1, backgroundColor2);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawGround() {
+            ctx.fillStyle = groundMainColor;
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+
+            const blockSize = 20;
+            ctx.fillStyle = groundBlockColor;
+            for (let x = (backgroundOffset % blockSize) - blockSize; x < canvas.width; x += blockSize) {
+                ctx.fillRect(x, canvas.height - groundHeight, blockSize - 2, groundHeight);
+            }
+
+            ctx.fillStyle = groundLineColor;
+            ctx.fillRect(0, canvas.height - groundHeight - 2, canvas.width, 2);
+        }
+
+        function drawSpike(obstacle) {
+            ctx.fillStyle = spikeColor;
+            ctx.beginPath();
+            ctx.moveTo(obstacle.x, obstacle.y + obstacle.height);
+            ctx.lineTo(obstacle.x + obstacle.width / 2, obstacle.y);
+            ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawBlock(obstacle) {
+            if (obstacle.type === 'solid_block') {
+                ctx.fillStyle = solidBlockColor;
+            } else if (obstacle.type === 'platform') {
+                ctx.fillStyle = platformColor;
+            }
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        }
+
+        function drawObstacles(obstaclesArray) {
+            obstaclesArray.forEach(obstacle => {
+                if (obstacle.type === 'spike') {
+                    drawSpike(obstacle);
+                } else if (obstacle.type === 'solid_block' || obstacle.type === 'platform') {
+                    drawBlock(obstacle);
+                }
+            });
+        }
+
+        function drawParticles(particlesArray) {
+            for (let i = particlesArray.length - 1; i >= 0; i--) {
+                let p = particlesArray[i];
+                ctx.save();
+                ctx.translate(p.x + p.size / 2, p.y + p.size / 2);
+                ctx.rotate(p.rotation);
+                ctx.fillStyle = particleColor;
+                ctx.globalAlpha = p.life / particleLife; // Fading out
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.restore();
+                ctx.globalAlpha = 1; // Reset globalAlpha
+
+                p.x += p.velocityX;
+                p.y += p.velocityY;
+                p.rotation += p.rotationSpeed;
+                p.life--;
+                if (p.life <= 0) {
+                    particlesArray.splice(i, 1);
+                }
+            }
+        }
+
+        function checkCollision(playerObj, obstacle) {
+            const playerLeft = playerObj.x;
+            const playerRight = playerObj.x + playerObj.width;
+            const playerTop = playerObj.y;
+            const playerBottom = playerObj.y + playerObj.height;
+
+            const obstacleLeft = obstacle.x;
+            const obstacleRight = obstacle.x + obstacle.width;
+            const obstacleTop = obstacle.y;
+            const obstacleBottom = obstacle.y + obstacle.height;
+
+            const collision = playerRight > obstacleLeft &&
+                              playerLeft < obstacleRight &&
+                              playerBottom > obstacleTop &&
+                              playerTop < obstacleBottom;
+
+            if (!collision) {
+                return false;
+            }
+
+            if (obstacle.type === 'spike' || obstacle.type === 'solid_block') {
+                return true; // Colide com espinhos e blocos sólidos sempre
+            }
+
+            if (obstacle.type === 'platform') {
+                // Para plataformas, só colide se cair por cima dela
+                const playerOldBottom = playerObj.y - playerObj.velocityY + playerObj.height;
+
+                if (playerObj.velocityY >= 0 && // Está caindo
+                    playerOldBottom <= obstacleTop && // Estava acima da plataforma
+                    playerBottom >= obstacleTop) { // E agora está abaixo ou na linha da plataforma
+                    return false; // Não é uma colisão fatal, é um pouso
+                } else {
+                    return true; // Colisão lateral ou por baixo
+                }
+            }
+            return false; // Por segurança, embora já tenhamos tratado os tipos
+        }
+
+        function drawFitnessChart() {
+            fitnessChartCtx.clearRect(0, 0, fitnessChartCanvas.width, fitnessChartCanvas.height);
+            fitnessChartCtx.fillStyle = '#1a1a1a'; // Cor de fundo do gráfico
+            fitnessChartCtx.fillRect(0, 0, fitnessChartCanvas.width, fitnessChartCanvas.height);
+
+            if (fitnessHistory.length === 0) return;
+
+            // Encontra o fitness máximo para escalar o gráfico
+            const maxFitness = Math.max(...fitnessHistory, 1); 
+            // Escala horizontal: cada ponto representa uma geração
+            const horizontalScale = fitnessChartCanvas.width / (fitnessHistory.length - 1 || 1);
+            // Escala vertical: mapeia o fitness máximo para a altura total do canvas
+            const verticalScale = fitnessChartCanvas.height / maxFitness;
+
+            fitnessChartCtx.beginPath();
+            fitnessChartCtx.strokeStyle = '#00ff00'; // Cor da linha do gráfico (verde)
+            fitnessChartCtx.lineWidth = 2;
+
+            // Move para o primeiro ponto
+            fitnessChartCtx.moveTo(0, fitnessChartCanvas.height - (fitnessHistory[0] * verticalScale));
+
+            // Desenha a linha através dos pontos
+            for (let i = 1; i < fitnessHistory.length; i++) {
+                const x = i * horizontalScale;
+                const y = fitnessChartCanvas.height - (fitnessHistory[i] * verticalScale);
+                fitnessChartCtx.lineTo(x, y);
+            }
+            fitnessChartCtx.stroke();
+
+            // Desenha os pontos individuais
+            fitnessChartCtx.fillStyle = '#fff'; // Cor dos pontos (branco)
+            for (let i = 0; i < fitnessHistory.length; i++) {
+                const x = i * horizontalScale;
+                const y = fitnessChartCanvas.height - (fitnessHistory[i] * verticalScale);
+                fitnessChartCtx.beginPath();
+                fitnessChartCtx.arc(x, y, 3, 0, Math.PI * 2); // Desenha um círculo para cada ponto
+                fitnessChartCtx.fill();
+            }
+
+            // Desenha os eixos
+            fitnessChartCtx.strokeStyle = '#666'; // Cor dos eixos (cinza)
+            fitnessChartCtx.lineWidth = 1;
+
+            fitnessChartCtx.beginPath();
+            fitnessChartCtx.moveTo(0, 0);
+            fitnessChartCtx.lineTo(0, fitnessChartCanvas.height);
+            fitnessChartCtx.stroke();
+
+            fitnessChartCtx.beginPath();
+            fitnessChartCtx.moveTo(0, fitnessChartCanvas.height);
+            fitnessChartCtx.lineTo(fitnessChartCanvas.width, fitnessChartCanvas.height);
+            fitnessChartCtx.stroke();
+
+            // Rótulos dos eixos
+            fitnessChartCtx.fillStyle = '#fff';
+            fitnessChartCtx.font = '10px Arial';
+            fitnessChartCtx.fillText('Fitness', 5, 15);
+            fitnessChartCtx.fillText('Geração', fitnessChartCanvas.width - 45, fitnessChartCanvas.height - 5);
+        }
+
+        function drawNeuralNetwork(brain) {
+            neuralNetworkCtx.clearRect(0, 0, neuralNetworkCanvas.width, neuralNetworkCanvas.height);
+            neuralNetworkCtx.fillStyle = '#222'; // Fundo da rede neural
+            neuralNetworkCtx.fillRect(0, 0, neuralNetworkCanvas.width, neuralNetworkCanvas.height);
+
+            // Verifica se o cérebro (rede neural) existe e tem dados
+            if (!brain || !brain.weights_ih || !brain.weights_ih.data || !brain.weights_ho || !brain.weights_ho.data || !brain.bias_h || !brain.bias_h.data || !brain.bias_o || !brain.bias_o.data) {
+                neuralNetworkCtx.fillStyle = '#fff';
+                neuralNetworkCtx.font = '14px Arial';
+                neuralNetworkCtx.fillText('Nenhuma rede neural para exibir ou dados incompletos.', 10, neuralNetworkCanvas.height / 2);
+                return;
+            }
+
+            const layers = [INPUT_NODES, HIDDEN_NODES, OUTPUT_NODES];
+            const nodeRadius = 8;
+            const paddingX = 40; // Espaçamento nas laterais
+            const paddingY = 20; // Espaçamento superior/inferior
+
+            for (let i = 0; i < layers.length; i++) {
+                const numNodes = layers[i];
+                // Calcula a posição X da camada
+                const layerX = paddingX + i * ((neuralNetworkCanvas.width - 2 * paddingX) / (layers.length - 1 || 1));
+
+                for (let j = 0; j < numNodes; j++) {
+                    // Calcula a posição Y do nó dentro da camada
+                    const nodeY = paddingY + j * ((neuralNetworkCanvas.height - 2 * paddingY) / (numNodes - 1 || 1));
+
+                    // Desenha as conexões (sinapses) entre as camadas
+                    if (i < layers.length - 1) {
+                        const nextNumNodes = layers[i + 1];
+                        const nextLayerX = paddingX + (i + 1) * ((neuralNetworkCanvas.width - 2 * paddingX) / (layers.length - 1 || 1));
+                        
+                        for (let k = 0; k < nextNumNodes; k++) {
+                            let weight = 0;
+                            // Pega o peso correto da matriz de pesos
+                            if (i === 0) { // De entrada para oculta
+                                if (brain.weights_ih && brain.weights_ih.data && brain.weights_ih.data[k]) {
+                                    weight = brain.weights_ih.data[k][j]; 
+                                }
+                            } else if (i === 1) { // De oculta para saída
+                                if (brain.weights_ho && brain.weights_ho.data && brain.weights_ho.data[k]) {
+                                    weight = brain.weights_ho.data[k][j]; 
+                                }
+                            }
+
+                            // Calcula a opacidade da linha baseada no valor absoluto do peso
+                            const alpha = Math.abs(weight) / 2; 
+                            // Cor da linha: verde para peso positivo, vermelho para peso negativo
+                            neuralNetworkCtx.strokeStyle = weight > 0 ? `rgba(0, 255, 0, ${alpha})` : `rgba(255, 0, 0, ${alpha})`;
+                            // Largura da linha baseada no valor absoluto do peso
+                            neuralNetworkCtx.lineWidth = 1 + Math.abs(weight) * 2; 
+
+                            const nextNodeY = paddingY + k * ((neuralNetworkCanvas.height - 2 * paddingY) / (nextNumNodes - 1 || 1));
+                            
+                            neuralNetworkCtx.beginPath();
+                            neuralNetworkCtx.moveTo(layerX, nodeY);
+                            neuralNetworkCtx.lineTo(nextLayerX, nextNodeY);
+                            neuralNetworkCtx.stroke();
+                        }
+                    }
+
+                    // Desenha o nó (círculo)
+                    neuralNetworkCtx.beginPath();
+                    neuralNetworkCtx.arc(layerX, nodeY, nodeRadius, 0, Math.PI * 2);
+                    neuralNetworkCtx.fillStyle = '#fff'; // Cor do nó (branco)
+                    neuralNetworkCtx.fill();
+                    neuralNetworkCtx.strokeStyle = '#333';
+                    neuralNetworkCtx.lineWidth = 1;
+                    neuralNetworkCtx.stroke();
+
+                    // Desenha um círculo interno para indicar o viés (bias)
+                    let bias = 0;
+                    if (i === 1) { // Viés da camada oculta
+                        if (brain.bias_h && brain.bias_h.data && brain.bias_h.data[j]) { 
+                            bias = brain.bias_h.data[j][0];
+                        }
+                    } else if (i === 2) { // Viés da camada de saída
+                        if (brain.bias_o && brain.bias_o.data && brain.bias_o.data[j]) { 
+                            bias = brain.bias_o.data[j][0];
+                        }
+                    }
+                    if (Math.abs(bias) > 0.1) { // Desenha o viés apenas se for significativo
+                        neuralNetworkCtx.beginPath();
+                        neuralNetworkCtx.arc(layerX, nodeY, nodeRadius * 0.5, 0, Math.PI * 2);
+                        // Cor do viés: azul para positivo, laranja para negativo
+                        neuralNetworkCtx.fillStyle = bias > 0 ? 'rgba(0, 0, 255, 0.5)' : 'rgba(255, 165, 0, 0.5)'; 
+                        neuralNetworkCtx.fill();
+                    }
+                }
+            }
+        }
+
+        class Player {
+            constructor(brain) {
+                this.x = 50;
+                this.y = canvas.height - 50 - groundHeight;
+                this.width = 40;
+                this.height = 40;
+                this.velocityY = 0;
+                this.gravity = 0.8;
+                this.jumpPower = -15;
+                this.isJumping = false;
+                this.rotation = 0;
+                this.rotationSpeed = 0.15;
+                this.isDead = false; 
+                this.rawFitness = 0; // Fitness baseado na distância percorrida
+                this.jumpCount = 0; // Quantidade de pulos
+                this.fitness = 0; // Fitness final (rawFitness - penalidade de pulo)
+                this.brain = brain || new NeuralNetwork(INPUT_NODES, HIDDEN_NODES, OUTPUT_NODES); // Cérebro da IA
+                this.localParticles = []; // Partículas para a explosão
+                this.sensorData = {}; // Dados para visualização dos sensores
+            }
+
+            think() {
+                if (this.isDead) return;
+
+                // Filtra obstáculos que estão à frente do jogador e os ordena pelo X
+                let relevantObstacles = currentGlobalObstacles.filter(obs => obs.x + obs.width > this.x);
+                relevantObstacles.sort((a, b) => a.x - b.x);
+
+                let inputs = [];
+                this.sensorData = { // Reinicia os dados do sensor para cada tick
+                    predictedJumpPath: [], 
+                    predictedCollisionDuringJump: false, 
+                    predictedCollisionX: 0, 
+                    predictedCollisionY: 0, 
+                    obstacleDetections: []
+                };
+
+                // Entrada 0: Velocidade vertical normalizada (entre -1 e 1 aproximadamente)
+                inputs[0] = this.velocityY / Math.abs(this.jumpPower); 
+                // Entrada 1: Está no chão? (1 se sim, 0 se não)
+                inputs[1] = this.y + this.height >= canvas.height - groundHeight ? 1 : 0; 
+
+                // Entradas para os próximos 3 obstáculos
+                const numObstaclesToSense = 3;
+                for (let i = 0; i < numObstaclesToSense; i++) {
+                    const obstacle = relevantObstacles[i];
+                    if (obstacle) {
+                        // Distância X normalizada (entre 0 e 1, 0 = perto, 1 = longe)
+                        const dist_x = (obstacle.x - this.x) / canvas.width; 
+                        // Distância Y normalizada (entre 0 e 1, 0 = no mesmo Y do topo do player, 1 = muito abaixo)
+                        // Invertemos (this.y - obstacle.y) para que objetos mais altos (menor Y) deem um valor positivo maior
+                        const dist_y = (this.y - obstacle.y) / canvas.height; 
+                        
+                        inputs.push(dist_x); 
+                        inputs.push(dist_y); 
+
+                        this.sensorData.obstacleDetections.push({
+                            obstacle: obstacle,
+                            dist_x: dist_x,
+                            dist_y: dist_y,
+                            isLethal: (obstacle.type === 'spike' || obstacle.type === 'solid_block')
+                        });
+
+                    } else {
+                        // Se não houver mais obstáculos (ou não há 3 próximos), forneça valores padrão (longe/irrelevante)
+                        inputs.push(1); 
+                        inputs.push(0); 
+                        this.sensorData.obstacleDetections.push({ obstacle: null, dist_x: 1, dist_y: 0, isLethal: false });
+                    }
+                }
+
+                // SIMULAÇÃO DE PULO PARA PREVER COLISÕES
+                let tempPlayer = {
+                    x: this.x,
+                    y: this.y,
+                    width: this.width,
+                    height: this.height,
+                    // Se o player está no chão, simula um pulo inicial; senão, continua a trajetória atual
+                    velocityY: this.isJumping ? this.velocityY : this.jumpPower, 
+                    gravity: this.gravity
+                };
+
+                const simulationSteps = 80; // Quantos ticks para simular
+                const stepGravity = this.gravity; 
+
+                for (let i = 0; i < simulationSteps; i++) {
+                    tempPlayer.velocityY += stepGravity;
+                    tempPlayer.y += tempPlayer.velocityY;
+                    
+                    const simulatedDistanceAdvanced = i * obstacleSpeed; 
+
+                    this.sensorData.predictedJumpPath.push({ x: tempPlayer.x + tempPlayer.width / 2 + simulatedDistanceAdvanced, y: tempPlayer.y + tempPlayer.height / 2 });
+
+                    if (tempPlayer.y + tempPlayer.height >= canvas.height - groundHeight) {
+                        tempPlayer.y = canvas.height - tempPlayer.height - groundHeight;
+                        tempPlayer.velocityY = 0;
+                        this.sensorData.predictedJumpPath.push({ x: tempPlayer.x + tempPlayer.width / 2 + simulatedDistanceAdvanced, y: tempPlayer.y + tempPlayer.height / 2 });
+                        break; 
+                    }
+
+                    for (let j = 0; j < relevantObstacles.length; j++) {
+                        let obs = relevantObstacles[j];
+                        
+                        let simulatedObstacleX = obs.x - simulatedDistanceAdvanced;
+
+                        let simulatedObstacle = {
+                            x: simulatedObstacleX, 
+                            y: obs.y,
+                            width: obs.width,
+                            height: obs.height,
+                            type: obs.type
+                        };
+
+                        if (checkCollision(tempPlayer, simulatedObstacle)) {
+                            this.sensorData.predictedCollisionDuringJump = true;
+                            this.sensorData.predictedCollisionX = simulatedObstacleX;
+                            this.sensorData.predictedCollisionY = tempPlayer.y;
+                            break; 
+                        }
+                    }
+                    if (this.sensorData.predictedCollisionDuringJump) {
+                        break; 
+                    }
+                }
+
+                // Entrada 8: Colisão prevista durante o pulo? (1 se sim, 0 se não)
+                inputs[8] = this.sensorData.predictedCollisionDuringJump ? 1 : 0;
+                // Entrada 9: Distância X para a colisão prevista normalizada (0 = perto, 1 = longe)
+                inputs[9] = this.sensorData.predictedCollisionDuringJump ? (this.sensorData.predictedCollisionX - this.x) / canvas.width : 0;
+                
+                // Preenche o restante das entradas com zero se INPUT_NODES for maior que o número de entradas calculadas
+                while (inputs.length < INPUT_NODES) {
+                    inputs.push(0); 
+                }
+
+                const output = this.brain.predict(inputs);
+                const jumpDecision = output[0]; // A saída 0 é a decisão de pular
+
+                if (jumpDecision > 0.5 && !this.isJumping) {
+                    this.jump();
+                }
+            }
+
+            jump() {
+                if (!this.isJumping) {
+                    this.velocityY = this.jumpPower;
+                    this.isJumping = true;
+                    this.rotationSpeed = 0.15; // Inicia a rotação
+                    this.jumpCount++; 
+                }
+            }
+
+            update() {
+                if (this.isDead) return;
+
+                this.velocityY += this.gravity;
+                this.y += this.velocityY;
+
+                this.rawFitness++; // Aumenta o fitness bruto pela distância percorrida
+
+                // Atualiza a rotação do jogador
+                if (this.isJumping || this.y + this.height < canvas.height - groundHeight) {
+                    this.rotation += this.rotationSpeed;
+                } else {
+                    this.rotation = 0; // Reseta a rotação quando no chão
+                }
+
+                // Colisão com o chão
+                if (this.y + this.height >= canvas.height - groundHeight) {
+                    this.y = canvas.height - this.height - groundHeight;
+                    this.velocityY = 0;
+                    this.isJumping = false; 
+                    this.rotation = 0; // Garante que a rotação para quando no chão
+                }
+
+                // Checa colisão com obstáculos
+                for (let j = 0; j < currentGlobalObstacles.length; j++) {
+                    let obstacle = currentGlobalObstacles[j];
+
+                    // Lógica específica para plataformas (pode pousar)
+                    if (obstacle.type === 'platform') {
+                        const playerOldBottom = this.y - this.velocityY + this.height;
+                        if (this.velocityY >= 0 && // Está caindo
+                            playerOldBottom <= obstacle.y && // Estava acima da plataforma
+                            (this.y + this.height) >= obstacle.y && // E agora está abaixo ou na linha da plataforma
+                            this.x + this.width > obstacle.x && // Colisão em X
+                            this.x < obstacle.x + obstacle.width) { // Colisão em X
+                            
+                            this.y = obstacle.y - this.height; // Pousa na plataforma
+                            this.velocityY = 0; 
+                            this.isJumping = false; 
+                            this.rotation = 0; 
+                        }
+                    }
+                    
+                    // Colisão fatal (espinhos, blocos sólidos, ou colisão ruim com plataforma)
+                    if (checkCollision(this, obstacle)) { 
+                        this.explode(); 
+                        break; 
+                    }
+                }
+
+                // Calcula o fitness final
+                this.fitness = this.rawFitness - (this.jumpCount * JUMP_PENALTY);
+                if (this.fitness < 0) this.fitness = 0; // Fitness não pode ser negativo
+            }
+
+            draw() {
+                // Desenha o jogador apenas se ele não estiver morto
+                if (!this.isDead) {
+                    ctx.save();
+                    ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+                    ctx.rotate(this.rotation);
+                    ctx.fillStyle = playerColor;
+                    ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+                    ctx.restore();
+
+                    this.drawSensors(); // Desenha os sensores para debug
+                }
+                // Sempre desenha as partículas se houver, independentemente do estado `isDead`
+                // As partículas são limpas dentro de drawParticles quando a vida acaba
+                drawParticles(this.localParticles);
+            }
+
+            drawSensors() {
+                if (!this.sensorData || this.isDead) return;
+
+                ctx.lineWidth = 1;
+
+                // Desenha as linhas dos sensores para os obstáculos detectados
+                for (let i = 0; i < this.sensorData.obstacleDetections.length; i++) {
+                    const detection = this.sensorData.obstacleDetections[i];
+                    if (detection.obstacle) {
+                        ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)'; // Amarelo semi-transparente
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+                        ctx.lineTo(detection.obstacle.x + detection.obstacle.width / 2, detection.obstacle.y + detection.obstacle.height / 2);
+                        ctx.stroke();
+
+                        // Marcador visual para obstáculos letais
+                        if (detection.isLethal) {
+                            ctx.strokeStyle = 'rgba(255, 0, 0, 1)'; // Vermelho sólido
+                            ctx.lineWidth = 3;
+                            const markerSize = 10;
+                            const markerX = detection.obstacle.x + detection.obstacle.width / 2;
+                            const markerY = detection.obstacle.y + detection.obstacle.height / 2;
+
+                            ctx.beginPath();
+                            ctx.moveTo(markerX - markerSize / 2, markerY - markerSize / 2);
+                            ctx.lineTo(markerX + markerSize / 2, markerY + markerSize / 2);
+                            ctx.moveTo(markerX + markerSize / 2, markerY - markerSize / 2);
+                            ctx.lineTo(markerX - markerSize / 2, markerY + markerSize / 2);
+                            ctx.stroke();
+                            ctx.lineWidth = 1; // Reseta a largura
+                        } else {
+                            // Marcador visual para obstáculos não letais (plataformas)
+                            ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'; // Verde sólido
+                            ctx.beginPath();
+                            ctx.arc(detection.obstacle.x + detection.obstacle.width / 2, detection.obstacle.y + detection.obstacle.height / 2, 4, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+
+                // Desenha a trajetória de pulo prevista
+                if (this.sensorData.predictedJumpPath && this.sensorData.predictedJumpPath.length > 1) {
+                    ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)'; // Verde semi-transparente
+                    ctx.lineWidth = 2; 
+                    ctx.beginPath();
+                    ctx.moveTo(this.sensorData.predictedJumpPath[0].x, this.sensorData.predictedJumpPath[0].y);
+                    for (let i = 1; i < this.sensorData.predictedJumpPath.length; i++) {
+                        ctx.lineTo(this.sensorData.predictedJumpPath[i].x, this.sensorData.predictedJumpPath[i].y);
+                    }
+                    ctx.stroke();
+                    ctx.lineWidth = 1; 
+
+                    // Marcador de colisão prevista na trajetória
+                    if (this.sensorData.predictedCollisionDuringJump) {
+                        ctx.strokeStyle = 'rgba(255, 0, 0, 1)'; // Vermelho sólido
+                        ctx.lineWidth = 3;
+                        const collisionX = this.sensorData.predictedCollisionX + this.width / 2;
+                        const collisionY = this.sensorData.predictedCollisionY + this.height / 2;
+                        const markerSize = 10;
+                        ctx.beginPath();
+                        ctx.moveTo(collisionX - markerSize / 2, collisionY - markerSize / 2);
+                        ctx.lineTo(collisionX + markerSize / 2, collisionY + markerSize / 2);
+                        ctx.moveTo(collisionX + markerSize / 2, collisionY - markerSize / 2);
+                        ctx.lineTo(collisionX - markerSize / 2, collisionY + markerSize / 2);
+                        ctx.stroke();
+                        ctx.lineWidth = 1;
+                    }
+                }
+            }
+
+            explode() {
+                if (this.isDead) return; 
+                for (let i = 0; i < numParticles; i++) {
+                    const size = Math.random() * (this.width / 4) + (this.width / 8);
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 5 + 2;
+                    this.localParticles.push({
+                        x: this.x + this.width / 2,
+                        y: this.y + this.height / 2,
+                        size: size,
+                        velocityX: Math.cos(angle) * speed,
+                        velocityY: Math.sin(angle) * speed,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.2,
+                        life: particleLife
+                    });
+                }
+                this.isDead = true;
+                this.fitness = this.rawFitness - (this.jumpCount * JUMP_PENALTY);
+                if (this.fitness < 0) this.fitness = 0;
+            }
+        }
+
+        function setPhase(phaseName) {
+            const index = phaseOrder.indexOf(phaseName);
+            if (index !== -1) {
+                currentPhaseIndex = index;
+                currentPhase = phaseName;
+                document.getElementById('currentPhaseDisplay').innerText = phaseName.charAt(0).toUpperCase() + phaseName.slice(1);
+            }
+        }
+
+        function createInitialPopulation(isFullReset = false) { 
+            population = []; 
+            // Garante que currentGlobalObstacles seja sempre uma CÓPIA do conjunto da fase atual
+            currentGlobalObstacles = JSON.parse(JSON.stringify(obstaclesByPhase[currentPhase]));
+
+            // Se é um reset completo (primeira carga ou reinício manual) ou se não há um melhor jogador ainda
+            if (isFullReset || !bestPlayerEver) {
+                bestPlayerEver = new NeuralNetwork(INPUT_NODES, HIDDEN_NODES, OUTPUT_NODES);
+            }
+
+            for (let i = 0; i < POPULATION_SIZE; i++) {
+                let newBrain = bestPlayerEver.clone();
+                // Apenas muta se não for o primeiro carregamento completo
+                if (!isFullReset) { 
+                    newBrain.mutate(MUTATION_RATE, MUTATION_AMOUNT);
+                }
+                population.push(new Player(newBrain));
+            }
+            generation = 1; 
+            highestFitness = 0;
+            fitnessHistory = []; 
+            console.log(`--- Geração ${generation} Iniciada na fase '${currentPhase}'! ---`);
+            document.getElementById('generation').innerText = generation;
+            document.getElementById('highestFitness').innerText = highestFitness.toFixed(2);
+            
+            drawFitnessChart(); 
+        }
+
+        function selectBestPlayer() {
+            let bestPlayer = null;
+            let maxFitness = -1;
+
+            for (let i = 0; i < population.length; i++) {
+                if (population[i].fitness > maxFitness) {
+                    maxFitness = population[i].fitness;
+                    bestPlayer = population[i];
+                }
+            }
+            return bestPlayer;
+        }
+
+        function nextGeneration() {
+            const bestCurrentPlayer = selectBestPlayer();
+
+            let totalFitness = 0;
+            population.forEach(player => {
+                totalFitness += player.fitness;
+            });
+            const avgFitness = totalFitness / population.length;
+            console.log(`Fitness Médio da Geração ${generation}: ${avgFitness.toFixed(2)}`);
+
+            // Adiciona o fitness do melhor jogador da geração atual ao histórico
+            if (bestCurrentPlayer) {
+                fitnessHistory.push(bestCurrentPlayer.fitness);
+            } else {
+                fitnessHistory.push(0); // Se não houver melhor jogador (ex: todos morreram com 0 fitness)
+            }
+
+            // Atualiza o melhor jogador de todos os tempos
+            if (bestCurrentPlayer && bestCurrentPlayer.fitness > highestFitness) {
+                highestFitness = bestCurrentPlayer.fitness;
+                bestPlayerEver = bestCurrentPlayer.brain.clone(); 
+                console.log(`\nNovo Melhor Fitness Histórico: ${highestFitness.toFixed(2)} na Geração ${generation}! 🏆`);
+            }
+            // Se ainda não houver um bestPlayerEver (primeira geração com todos morrendo, por exemplo)
+            else if (!bestPlayerEver) { 
+                bestPlayerEver = new NeuralNetwork(INPUT_NODES, HIDDEN_NODES, OUTPUT_NODES); 
+            }
+            
+            generation++;
+            
+            // GARANTE QUE OS OBSTÁCULOS SEJAM RESETADOS PARA A PRÓXIMA GERAÇÃO.
+            // Isso é crucial para que cada geração comece do mesmo ponto no mapa.
+            currentGlobalObstacles = JSON.parse(JSON.stringify(obstaclesByPhase[currentPhase]));
+            
+            // Cria a nova população baseada no melhor jogador da geração anterior (com mutação)
+            population = []; 
+            for (let i = 0; i < POPULATION_SIZE; i++) {
+                let newBrain = bestPlayerEver.clone(); 
+                newBrain.mutate(MUTATION_RATE, MUTATION_AMOUNT); 
+                population.push(new Player(newBrain)); 
+            }
+            console.log(`Melhor fitness da geração anterior: ${bestCurrentPlayer ? bestCurrentPlayer.fitness.toFixed(2) : 'N/A'}`);
+            
+            // Atualiza o display
+            document.getElementById('generation').innerText = generation;
+            document.getElementById('highestFitness').innerText = highestFitness.toFixed(2);
+
+            drawFitnessChart(); // Atualiza o gráfico de fitness
+        }
+
+        // --- Loop principal do jogo ---
+        function gameLoop() {
+            drawBackground();
+            drawGround();
+
+            // Move o offset do background para dar a sensação de movimento
+            backgroundOffset = (backgroundOffset + obstacleSpeed * backgroundSpeedMultiplier) % canvas.width;
+
+            let alivePlayersCount = 0;
+            let allPlayersDone = true; // Flag para saber se todos os jogadores terminaram sua "vida" (morreram E animação de morte terminou)
+
+            // Move os obstáculos globais
+            for (let i = 0; i < currentGlobalObstacles.length; i++) {
+                currentGlobalObstacles[i].x -= obstacleSpeed;
+            }
+            // Filtra obstáculos que saíram da tela
+            currentGlobalObstacles = currentGlobalObstacles.filter(obs => obs.x + obs.width > 0);
+
+            // LÓGICA DE TRANSIÇÃO OU REINÍCIO DE FASE
+            if (currentGlobalObstacles.length === 0) {
+                // Se todos os obstáculos da fase atual saíram da tela
+                console.log(`Fase '${currentPhase}' concluída!`);
+                
+                // Avança para a próxima fase na ordem (loop)
+                currentPhaseIndex = (currentPhaseIndex + 1) % phaseOrder.length;
+                currentPhase = phaseOrder[currentPhaseIndex]; // Atualiza o nome da fase
+                document.getElementById('currentPhaseDisplay').innerText = currentPhase.charAt(0).toUpperCase() + currentPhase.slice(1);
+
+                console.log(`Avançando para a fase: '${currentPhase}'`);
+                
+                // Reinicia a população para a nova fase, o que também resetará os obstáculos via createInitialPopulation
+                createInitialPopulation(false); 
+            }
+
+            // Loop para atualizar e desenhar cada jogador
+            for (let i = 0; i < population.length; i++) {
+                let player = population[i];
+
+                // Atualiza e desenha o jogador se ele não estiver morto
+                if (!player.isDead) {
+                    player.think(); // A IA decide o que fazer
+                    player.update(); // Atualiza a posição e estado do jogador
+                    alivePlayersCount++; // Conta jogadores vivos
+                } 
+                
+                // Desenha as partículas, independentemente do estado do jogador.
+                // As partículas são removidas da lista localParticles quando a vida útil termina.
+                drawParticles(player.localParticles); 
+                player.draw(); // O draw() já cuida de desenhar o cubo ou apenas as partículas
+
+                // Se houver algum jogador que ainda não morreu OU cuja animação de morte ainda está ativa,
+                // significa que nem todos os jogadores terminaram sua "vida" nesta geração.
+                if (!player.isDead || player.localParticles.length > 0) {
+                    allPlayersDone = false;
+                }
+            }
+            
+            drawObstacles(currentGlobalObstacles); // Desenha os obstáculos no cenário
+
+            document.getElementById('aliveCount').innerText = alivePlayersCount; // Mostra quantos players *ainda não bateram*
+
+            // Desenha a rede neural do melhor jogador (se houver)
+            if (bestPlayerEver) { 
+                drawNeuralNetwork(bestPlayerEver); 
+            }
+
+            // A condição para a próxima geração: todos os jogadores morreram E suas partículas desapareceram
+            if (allPlayersDone) { 
+                nextGeneration();
+            }
+
+            requestAnimationFrame(gameLoop); // Continua o loop do jogo
+        }
+
+        // --- Inicia a simulação ---
+        // A ordem é importante aqui:
+        // 1. Define a fase inicial (para que createInitialPopulation saiba qual conjunto de obstáculos carregar)
+        setPhase('spikes'); 
+        // 2. Cria a população inicial e carrega os obstáculos para a primeira fase
+        createInitialPopulation(true); // Carga inicial completa, sem mutar a primeira geração (se bestPlayerEver é null)
+        
+        gameLoop(); // Inicia o loop principal do jogo
+
+        console.log("Sistema de Neuroevolution monolítico totalmente carregado e pronto para a ação! Que a evolução do cubinho comece em um arquivo só!");
+    </script>
+</body>
+</html>
