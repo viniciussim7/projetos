@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Música com Controles Personalizados e Gráfico de Onda Sonora</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            position: relative;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .player-container {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+            min-width: 280px;
+        }
+
+        .player-container label {
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .player-container input[type="file"] {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #fff;
+            width: calc(100% - 10px);
+            box-sizing: border-box;
+        }
+
+        #audio-player {
+            width: 100%;
+        }
+
+        /* Oculta os controles nativos do player de áudio */
+        #audio-player::-webkit-media-controls-enclosure {
+            display: none !important;
+        }
+        #audio-player::-webkit-media-controls-panel {
+            display: none !important;
+        }
+        #audio-player::--webkit-media-controls-play-button {
+            display: none !important;
+        }
+        #audio-player::--webkit-media-controls-volume-slider {
+            display: none !important;
+        }
+
+
+        .input-box, .radio-box, .crossover-box {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1001;
+            width: 50px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #add8e6;
+            border: 1px solid #6a5acd;
+            color: #333;
+            font-size: 9px;
+            text-align: center;
+            box-sizing: border-box;
+            word-break: break-word;
+            padding: 5px;
+        }
+
+        .input-box {
+            left: 10px;
+        }
+
+        .waveform-wrapper {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 999;
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        
+        .waveform-wrapper.input-graph { 
+            left: 70px; 
+        }
+
+        .waveform-wrapper.middle-graph {
+            left: 290px; 
+        }
+        
+        .waveform-canvas {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: block;
+        }
+
+        #waveform-canvas-input { 
+            width: 150px;
+            height: 20px; 
+        }
+
+        #waveform-canvas-middle { 
+            width: 120px; 
+            height: 100px; 
+        }
+        
+        .waveform-canvas-output {
+            width: 150px; 
+            height: 50px; 
+            display: block; 
+        }
+
+        .radio-box {
+            left: 230px;
+        }
+
+        .crossover-box {
+            left: 400px;
+            width: 100px;
+            height: 70px;
+        }
+
+        .output-container {
+            position: fixed;
+            display: flex;
+            flex-direction: column;
+            align-items: center; 
+            text-align: center;
+            z-index: 1001;
+        }
+
+        .output-container.bass {
+            top: calc(50% - 90px);
+            left: 550px;
+        }
+
+        .output-container.mid-bass {
+            top: 50%;
+            left: 550px;
+        }
+
+        .output-container.treble {
+            top: calc(50% + 90px);
+            left: 550px;
+        }
+
+        .output-box {
+            background-color: #f0f8ff; 
+            border: 1px solid #87cefa;
+            font-size: 10px;
+            width: 80px; 
+            height: 40px; 
+            display: flex; 
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            position: relative; 
+            margin-bottom: 2px; 
+        }
+
+        .frequency-annotation {
+            font-size: 9px;
+            color: #555;
+        }
+
+        .potentiometer {
+            position: absolute; 
+            bottom: 2px; 
+            right: 2px;  
+            width: 20px; 
+            height: 20px;
+            background-color: #555;
+            border-radius: 50%;
+            border: 1px solid #333;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+            cursor: ns-resize;
+            overflow: hidden;
+        }
+
+        .pot-handle {
+            position: absolute;
+            top: 50%; 
+            left: 50%; 
+            width: 2px; 
+            height: 8px; 
+            background-color: #ffd700; 
+            transform-origin: center; 
+            margin-left: -1px; 
+            margin-top: -6px; 
+            transform: rotate(-135deg); 
+            transition: transform 0.05s linear;
+        }
+
+        .speaker-output-group {
+            position: absolute; 
+            left: calc(100% + 10px); 
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex; 
+            align-items: center; 
+            gap: 10px; 
+        }
+
+        .speaker-base {
+            background-color: #333;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            box-shadow: none;
+            position: relative;
+        }
+
+        .speaker-cone {
+            background-color: #555;
+            border-radius: 50%;
+            border: none;
+            position: absolute;
+            box-shadow: none;
+            transition: transform 0.02s ease-out; 
+        }
+
+        .speaker-center-cap {
+            background-color: #888;
+            border-radius: 50%;
+            position: absolute;
+            border: none;
+            transition: transform 0.02s ease-out; 
+        }
+
+        .subwoofer {
+            width: 60px; 
+            height: 60px;
+        }
+        .subwoofer .speaker-cone {
+            width: 40px;
+            height: 40px;
+        }
+        .subwoofer .speaker-center-cap {
+            width: 15px;
+            height: 15px;
+        }
+
+        .woofer {
+            width: 40px; 
+            height: 40px;
+        }
+        .woofer .speaker-cone {
+            width: 28px;
+            height: 28px;
+        }
+        .woofer .speaker-center-cap {
+            width: 10px;
+            height: 10px;
+        }
+
+        .tweeter {
+            width: 25px; 
+            height: 25px;
+        }
+        .tweeter .speaker-cone {
+            width: 18px;
+            height: 18px;
+        }
+        .tweeter .speaker-center-cap {
+            width: 7px;
+            height: 7px;
+        }
+
+        #arrow-svg-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 997; 
+            pointer-events: none; 
+        }
+
+        .diagram-line {
+            stroke: #87cefa; 
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .diagram-arrow {
+            fill: #87cefa; 
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="player-container">
+        <label for="music-upload">Escolha sua música (.mp3):</label>
+        <input type="file" id="music-upload" accept="audio/mpeg">
+        <audio id="audio-player"></audio>
+    </div>
+
+    <div class="input-box" id="entrada-box">
+        entrada
+    </div>
+
+    <div class="waveform-wrapper input-graph">
+        <canvas id="waveform-canvas-input" class="waveform-canvas"></canvas>
+    </div>
+
+    <div class="radio-box" id="radio-box">
+        rádio
+    </div>
+
+    <div class="waveform-wrapper middle-graph">
+        <canvas id="waveform-canvas-middle" class="waveform-canvas"></canvas>
+    </div>
+
+    <div class="crossover-box" id="crossover-box">
+        crossover
+    </div>
+
+    <div class="output-container bass">
+        <div class="output-box" id="bass-box">
+            BASS
+            <div class="potentiometer" id="bass-potentiometer">
+                <div class="pot-handle"></div>
+            </div>
+        </div>
+        <span class="frequency-annotation">0-200hz</span>
+        <div class="speaker-output-group" id="bass-output-group">
+            <canvas id="waveform-canvas-bass" class="waveform-canvas waveform-canvas-output"></canvas>
+            <div id="bass-speaker" class="speaker-base subwoofer">
+                <div class="speaker-cone"></div>
+                <div class="speaker-center-cap"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="output-container mid-bass">
+        <div class="output-box" id="mid-bass-box">
+            MID-BASS
+            <div class="potentiometer" id="mid-bass-potentiometer">
+                <div class="pot-handle"></div>
+            </div>
+        </div>
+        <span class="frequency-annotation">300-4500hz</span>
+        <div class="speaker-output-group" id="mid-bass-output-group">
+            <canvas id="waveform-canvas-mid-bass" class="waveform-canvas waveform-canvas-output"></canvas>
+            <div id="mid-bass-speaker" class="speaker-base woofer">
+                <div class="speaker-cone"></div>
+                <div class="speaker-center-cap"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="output-container treble">
+        <div class="output-box" id="treble-box">
+            TREBLE
+            <div class="potentiometer" id="treble-potentiometer">
+                <div class="pot-handle"></div>
+            </div>
+        </div>
+        <span class="frequency-annotation">4500-20000hz</span>
+        <div class="speaker-output-group" id="treble-output-group">
+            <canvas id="waveform-canvas-treble" class="waveform-canvas waveform-canvas-output"></canvas>
+            <div id="treble-speaker" class="speaker-base tweeter">
+                <div class="speaker-cone"></div>
+                <div class="speaker-center-cap"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="arrow-svg-container">
+        <svg id="diagram-arrows" width="100%" height="100%">
+            </svg>
+    </div>
+
+    <script>
+        const musicUploadInput = document.getElementById('music-upload');
+        const audioPlayer = document.getElementById('audio-player');
+        const canvasInput = document.getElementById('waveform-canvas-input');
+        const canvasCtxInput = canvasInput.getContext('2d');
+        const canvasMiddle = document.getElementById('waveform-canvas-middle');
+        const canvasCtxMiddle = canvasMiddle.getContext('2d');
+        const canvasBass = document.getElementById('waveform-canvas-bass');
+        const canvasCtxBass = canvasBass.getContext('2d');
+        const canvasMidBass = document.getElementById('waveform-canvas-mid-bass');
+        const canvasCtxMidBass = canvasMidBass.getContext('2d');
+        const canvasTreble = document.getElementById('waveform-canvas-treble');
+        const canvasCtxTreble = canvasTreble.getContext('2d');
+
+        const bassSpeakerCone = document.querySelector('#bass-speaker .speaker-cone');
+        const bassSpeakerCenterCap = document.querySelector('#bass-speaker .speaker-center-cap');
+        const midBassSpeakerCone = document.querySelector('#mid-bass-speaker .speaker-cone');
+        const midBassSpeakerCenterCap = document.querySelector('#mid-bass-speaker .speaker-center-cap');
+        const trebleSpeakerCone = document.querySelector('#treble-speaker .speaker-cone');
+        const trebleSpeakerCenterCap = document.querySelector('#treble-speaker .speaker-center-cap');
+
+        let audioContext = null;
+        let analyserDirect = null; 
+        let analyserVolume = null; 
+        let analyserBass = null;   
+        let analyserMidBass = null; 
+        let analyserTreble = null; 
+
+        let source = null;
+        let masterGainNode = null; 
+        
+        let bassFilter = null;
+        let midBassFilter = null;
+        let trebleFilter = null;
+
+        let bassGainNode = null;   
+        let midBassGainNode = null; 
+        let trebleGainNode = null; 
+
+        let masterMixer = null; 
+
+        let dataArrayDirect;
+        let bufferLengthDirect;
+        let dataArrayVolume;
+        let bufferLengthVolume;
+        let dataArrayBass;
+        let bufferLengthBass;
+        let dataArrayMidBass;
+        let bufferLengthMidBass;
+        let dataArrayTreble;
+        let bufferLengthTreble;
+
+        let lastFrameTime = 0;
+        const desiredFps = 50;
+        const frameInterval = 1000 / desiredFps;
+
+        let isPlaying = false;
+
+        function initializeAudioNodes() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            if (!analyserDirect) {
+                analyserDirect = audioContext.createAnalyser();
+                analyserDirect.fftSize = 512;
+                bufferLengthDirect = analyserDirect.frequencyBinCount;
+                dataArrayDirect = new Uint8Array(bufferLengthDirect);
+            }
+
+            if (!analyserVolume) {
+                analyserVolume = audioContext.createAnalyser();
+                analyserVolume.fftSize = 512;
+                bufferLengthVolume = analyserVolume.frequencyBinCount;
+                dataArrayVolume = new Uint8Array(bufferLengthVolume);
+            }
+
+            if (!analyserBass) {
+                analyserBass = audioContext.createAnalyser();
+                analyserBass.fftSize = 1024;
+                analyserBass.smoothingTimeConstant = 0.8; 
+                bufferLengthBass = analyserBass.frequencyBinCount;
+                dataArrayBass = new Uint8Array(bufferLengthBass);
+            }
+
+            if (!analyserMidBass) {
+                analyserMidBass = audioContext.createAnalyser();
+                analyserMidBass.fftSize = 1024;
+                analyserMidBass.smoothingTimeConstant = 0.8; 
+                bufferLengthMidBass = analyserMidBass.frequencyBinCount;
+                dataArrayMidBass = new Uint8Array(bufferLengthMidBass);
+            }
+
+            if (!analyserTreble) {
+                analyserTreble = audioContext.createAnalyser();
+                analyserTreble.fftSize = 1024;
+                analyserTreble.smoothingTimeConstant = 0.8; 
+                bufferLengthTreble = analyserTreble.frequencyBinCount;
+                dataArrayTreble = new Uint8Array(bufferLengthTreble);
+            }
+
+            if (!masterGainNode) {
+                masterGainNode = audioContext.createGain();
+                masterGainNode.gain.value = 1; // Definir volume padrão para 1 (máximo)
+            }
+            
+            if (!bassFilter) {
+                bassFilter = audioContext.createBiquadFilter();
+                bassFilter.type = "lowpass"; 
+                bassFilter.frequency.value = 200; 
+                bassFilter.Q.value = 1; 
+            }
+            if (!midBassFilter) {
+                midBassFilter = audioContext.createBiquadFilter();
+                midBassFilter.type = "bandpass"; 
+                midBassFilter.frequency.value = (300 + 4500) / 2; 
+                midBassFilter.Q.value = midBassFilter.frequency.value / (4500 - 300);
+            }
+            if (!trebleFilter) {
+                trebleFilter = audioContext.createBiquadFilter();
+                trebleFilter.type = "highpass"; 
+                trebleFilter.frequency.value = 4500; 
+                trebleFilter.Q.value = 1; 
+            }
+
+            if (!bassGainNode) {
+                bassGainNode = audioContext.createGain();
+                bassGainNode.gain.value = 0; 
+            }
+            if (!midBassGainNode) {
+                midBassGainNode = audioContext.createGain();
+                midBassGainNode.gain.value = 0; 
+            }
+            if (!trebleGainNode) {
+                trebleGainNode = audioContext.createGain();
+                trebleGainNode.gain.value = 0; 
+            }
+
+            if (!masterMixer) {
+                masterMixer = audioContext.createGain(); 
+                masterMixer.connect(audioContext.destination);
+            }
+        }
+
+        function connectMediaElementToAudioGraph() {
+            if (source) {
+                source.disconnect();
+            }
+            source = audioContext.createMediaElementSource(audioPlayer);
+            
+            source.connect(analyserDirect);
+            
+            source.connect(masterGainNode);
+
+            masterGainNode.connect(analyserVolume); 
+
+            masterGainNode.connect(bassFilter);
+            masterGainNode.connect(midBassFilter);
+            masterGainNode.connect(trebleFilter);
+
+            bassFilter.connect(bassGainNode);
+            bassGainNode.connect(analyserBass); 
+            bassGainNode.connect(masterMixer);
+
+            midBassFilter.connect(midBassGainNode);
+            midBassGainNode.connect(analyserMidBass); 
+            midBassGainNode.connect(masterMixer);
+
+            trebleFilter.connect(trebleGainNode);
+            trebleGainNode.connect(analyserTreble); 
+            trebleGainNode.connect(masterMixer);
+        }
+
+        function drawWaveformOnCanvas(canvasElement, canvasContext, analyserToUse, dataArrayToUse, bufferLengthToUse, currentTime) {
+            if (!analyserToUse || !isPlaying) {
+                canvasContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                
+                let lineWidth = 2; 
+                if (canvasElement === canvasInput) {
+                    lineWidth = 4; 
+                }
+                canvasContext.lineWidth = lineWidth;
+
+                canvasContext.strokeStyle = 'rgb(0, 150, 255)';
+                canvasContext.beginPath();
+                canvasContext.moveTo(0, canvasElement.height / 2);
+                canvasContext.lineTo(canvasElement.width, canvasElement.height / 2);
+                canvasContext.stroke();
+                return;
+            }
+
+            analyserToUse.getByteTimeDomainData(dataArrayToUse);
+
+            canvasContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            let lineWidth = 2; 
+            if (canvasElement === canvasInput) {
+                lineWidth = 4; 
+            }
+            canvasContext.lineWidth = lineWidth;
+
+            canvasContext.strokeStyle = 'rgb(0, 150, 255)';
+
+            canvasContext.beginPath();
+
+            const sliceWidth = canvasElement.width * 1.0 / bufferLengthToUse;
+            let x = 0;
+
+            const amplitudeMultiplier = 0.05; // Ajuste este valor para encurtar a onda. Era 0.15.
+
+            const centerY = canvasElement.height / 2;
+
+            for (let i = 0; i < bufferLengthToUse; i++) {
+                const v = (dataArrayToUse[i] - 128) / 128.0;
+                const y = centerY + (v * centerY * amplitudeMultiplier);
+
+                if (i === 0) {
+                    canvasContext.moveTo(x, y);
+                } else {
+                    canvasContext.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+            }
+
+            canvasContext.stroke();
+        }
+
+        function updateSpeakerConeMovement(analyser, dataArray, coneElement, centerCapElement) {
+            if (!analyser || !isPlaying || !coneElement || !centerCapElement) {
+                coneElement.style.transform = 'translateY(0px)';
+                centerCapElement.style.transform = 'translateY(0px)';
+                return;
+            }
+
+            analyser.getByteTimeDomainData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += (dataArray[i] - 128);
+            }
+            const averageVariation = sum / dataArray.length;
+
+            const maxMovementPx = 8;
+            const movement = (averageVariation / 128) * maxMovementPx; 
+
+            coneElement.style.transform = `translateY(${movement}px)`;
+            centerCapElement.style.transform = `translateY(${movement * 0.5}px)`; 
+        }
+
+        function mainDrawLoop(currentTime) {
+            requestAnimationFrame(mainDrawLoop);
+
+            if (currentTime < lastFrameTime + frameInterval) {
+                return; 
+            }
+            lastFrameTime = currentTime;
+
+            drawWaveformOnCanvas(canvasInput, canvasCtxInput, analyserDirect, dataArrayDirect, bufferLengthDirect, currentTime);
+            drawWaveformOnCanvas(canvasMiddle, canvasCtxMiddle, analyserVolume, dataArrayVolume, bufferLengthVolume, currentTime);
+            drawWaveformOnCanvas(canvasBass, canvasCtxBass, analyserBass, dataArrayBass, bufferLengthBass, currentTime);
+            drawWaveformOnCanvas(canvasMidBass, canvasCtxMidBass, analyserMidBass, dataArrayMidBass, bufferLengthMidBass, currentTime);
+            drawWaveformOnCanvas(canvasTreble, canvasCtxTreble, analyserTreble, dataArrayTreble, bufferLengthTreble, currentTime);
+
+            updateSpeakerConeMovement(analyserBass, dataArrayBass, bassSpeakerCone, bassSpeakerCenterCap);
+            updateSpeakerConeMovement(analyserMidBass, dataArrayMidBass, midBassSpeakerCone, midBassSpeakerCenterCap);
+            updateSpeakerConeMovement(analyserTreble, dataArrayTreble, trebleSpeakerCone, trebleSpeakerCenterCap);
+        }
+
+        // Função para obter o centro direito de um elemento
+        function getElementRightCenter(elementId) {
+            const element = document.getElementById(elementId);
+            const rect = element.getBoundingClientRect();
+            return {
+                x: rect.right + window.scrollX,
+                y: rect.top + rect.height / 2 + window.scrollY
+            };
+        }
+
+        // Função para obter o centro esquerdo de um elemento
+        function getElementLeftCenter(elementId) {
+            const element = document.getElementById(elementId);
+            const rect = element.getBoundingClientRect();
+            return {
+                x: rect.left + window.scrollX,
+                y: rect.top + rect.height / 2 + window.scrollY
+            };
+        }
+
+        // Cache das flechas e pontas para evitar recriação
+        const cachedArrows = {};
+
+        function drawSvgArrow(svg, startX, startY, endX, endY, id, isCurved = false, controlX = 0, controlY = 0) {
+            let pathD;
+            if (isCurved) {
+                pathD = `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`;
+            } else {
+                pathD = `M ${startX} ${startY} L ${endX} ${endY}`;
+            }
+
+            let path = cachedArrows[id];
+            if (!path) {
+                path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('id', id);
+                path.classList.add('diagram-line');
+                svg.appendChild(path);
+                cachedArrows[id] = path;
+            }
+            path.setAttribute('d', pathD);
+
+            let arrowHead = cachedArrows[`${id}-arrowhead`];
+            if (!arrowHead) {
+                arrowHead = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                arrowHead.setAttribute('id', `${id}-arrowhead`);
+                arrowHead.classList.add('diagram-arrow');
+                svg.appendChild(arrowHead);
+                cachedArrows[`${id}-arrowhead`] = arrowHead;
+            }
+
+            let finalAngle;
+            if (isCurved) {
+                const dx = endX - controlX;
+                const dy = endY - controlY;
+                finalAngle = Math.atan2(dy, dx);
+            } else {
+                finalAngle = Math.atan2(endY - startY, endX - startX);
+            }
+
+            const arrowSize = 10; 
+
+            let p1x = endX - arrowSize * Math.cos(finalAngle - Math.PI / 6);
+            let p1y = endY - arrowSize * Math.sin(finalAngle - Math.PI / 6);
+            let p2x = endX - arrowSize * Math.cos(finalAngle + Math.PI / 6);
+            let p2y = endY - arrowSize * Math.sin(finalAngle + Math.PI / 6);
+
+            arrowHead.setAttribute('points', `${endX},${endY} ${p1x},${p1y} ${p2x},${p2y}`);
+        }
+
+        function redrawAllArrows() {
+            const svg = document.getElementById('diagram-arrows');
+            if (!svg) return;
+
+            const entradaRight = getElementRightCenter('entrada-box');
+            const canvasInputLeft = getElementLeftCenter('waveform-canvas-input');
+            drawSvgArrow(svg, entradaRight.x, entradaRight.y, canvasInputLeft.x, canvasInputLeft.y, 'arrow-entrada-canvas-input');
+
+            const canvasInputRight = getElementRightCenter('waveform-canvas-input');
+            const radioLeft = getElementLeftCenter('radio-box');
+            drawSvgArrow(svg, canvasInputRight.x, canvasInputRight.y, radioLeft.x, radioLeft.y, 'arrow-canvas-input-radio');
+
+            const radioRight = getElementRightCenter('radio-box');
+            const canvasMiddleLeft = getElementLeftCenter('waveform-canvas-middle');
+            drawSvgArrow(svg, radioRight.x, radioRight.y, canvasMiddleLeft.x, canvasMiddleLeft.y, 'arrow-radio-canvas-middle');
+
+            const canvasMiddleRight = getElementRightCenter('waveform-canvas-middle');
+            const crossoverLeft = getElementLeftCenter('crossover-box');
+            drawSvgArrow(svg, canvasMiddleRight.x, canvasMiddleRight.y, crossoverLeft.x, crossoverLeft.y, 'arrow-canvas-middle-crossover');
+
+            const crossoverRight = getElementRightCenter('crossover-box');
+            const bassBoxLeft = getElementLeftCenter('bass-box'); 
+            const midBassBoxLeft = getElementLeftCenter('mid-bass-box');
+            const trebleBoxLeft = getElementLeftCenter('treble-box');
+
+            drawSvgArrow(svg, crossoverRight.x, crossoverRight.y, bassBoxLeft.x, bassBoxLeft.y, 'arrow-crossover-bass', true, crossoverRight.x + 100, bassBoxLeft.y - 50);
+            drawSvgArrow(svg, crossoverRight.x, crossoverRight.y, midBassBoxLeft.x, midBassBoxLeft.y, 'arrow-crossover-midbass');
+            drawSvgArrow(svg, crossoverRight.x, crossoverRight.y, trebleBoxLeft.x, trebleBoxLeft.y, 'arrow-crossover-treble', true, crossoverRight.x + 100, trebleBoxLeft.y + 50);
+
+            const canvasBassRight = getElementRightCenter('waveform-canvas-bass');
+            const bassSpeakerLeft = getElementLeftCenter('bass-speaker');
+            drawSvgArrow(svg, canvasBassRight.x, canvasBassRight.y, bassSpeakerLeft.x, bassSpeakerLeft.y, 'arrow-canvas-bass-speaker');
+
+            const canvasMidBassRight = getElementRightCenter('waveform-canvas-mid-bass');
+            const midBassSpeakerLeft = getElementLeftCenter('mid-bass-speaker');
+            drawSvgArrow(svg, canvasMidBassRight.x, canvasMidBassRight.y, midBassSpeakerLeft.x, midBassSpeakerLeft.y, 'arrow-canvas-mid-bass-speaker');
+
+            const canvasTrebleRight = getElementRightCenter('waveform-canvas-treble');
+            const trebleSpeakerLeft = getElementLeftCenter('treble-speaker');
+            drawSvgArrow(svg, canvasTrebleRight.x, canvasTrebleRight.y, trebleSpeakerLeft.x, trebleSpeakerLeft.y, 'arrow-canvas-treble-speaker');
+        }
+
+        // Potenciômetros
+        const bassPot = document.getElementById('bass-potentiometer');
+        const midBassPot = document.getElementById('mid-bass-potentiometer');
+        const treblePot = document.getElementById('treble-potentiometer');
+
+        const potentiometerValues = {
+            bass: 50,
+            midBass: 50,
+            treble: 50
+        };
+
+        const MIN_POT_VALUE = 0;
+        const MAX_POT_VALUE = 100;
+        const SCROLL_SENSITIVITY = 1;
+
+        function updatePotentiometerVisual(potElement, value) {
+            const handle = potElement.querySelector('.pot-handle');
+            if (handle) {
+                const angle = (value / (MAX_POT_VALUE - MIN_POT_VALUE)) * 270 - 135; // 270 graus de rotação (-135 a +135)
+                handle.style.transform = `rotate(${angle}deg)`;
+            }
+        }
+
+        function handlePotentiometerScroll(event, potId, potValueKey) {
+            event.preventDefault(); 
+            let value = potentiometerValues[potValueKey];
+
+            if (event.deltaY < 0) {
+                value = Math.min(MAX_POT_VALUE, value + SCROLL_SENSITIVITY);
+            } else {
+                value = Math.max(MIN_POT_VALUE, value - SCROLL_SENSITIVITY);
+            }
+            
+            potentiometerValues[potValueKey] = value; 
+
+            updatePotentiometerVisual(document.getElementById(potId), value);
+
+            let targetGainNode;
+            if (potValueKey === 'bass' && bassGainNode) {
+                targetGainNode = bassGainNode;
+            } else if (potValueKey === 'midBass' && midBassGainNode) {
+                targetGainNode = midBassGainNode;
+            } else if (potValueKey === 'treble' && trebleGainNode) {
+                targetGainNode = trebleGainNode;
+            }
+
+            if (targetGainNode) {
+                targetGainNode.gain.value = value / 50; 
+            }
+        }
+
+        bassPot.addEventListener('wheel', (event) => handlePotentiometerScroll(event, 'bass-potentiometer', 'bass'));
+        midBassPot.addEventListener('wheel', (event) => handlePotentiometerScroll(event, 'mid-bass-potentiometer', 'midBass'));
+        treblePot.addEventListener('wheel', (event) => handlePotentiometerScroll(event, 'treble-potentiometer', 'treble'));
+
+        updatePotentiometerVisual(bassPot, potentiometerValues.bass);
+        updatePotentiometerVisual(midBassPot, potentiometerValues.midBass);
+        updatePotentiometerVisual(treblePot, potentiometerValues.treble);
+
+        musicUploadInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const objectURL = URL.createObjectURL(file);
+                audioPlayer.src = objectURL;
+                audioPlayer.load();
+                
+                // Garante que o AudioContext esteja inicializado e ativo
+                if (!audioContext) {
+                    initializeAudioNodes();
+                }
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+
+                connectMediaElementToAudioGraph();
+
+                audioPlayer.play();
+                isPlaying = true;
+                mainDrawLoop();
+            }
+        });
+
+        audioPlayer.addEventListener('play', () => {
+            isPlaying = true;
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            mainDrawLoop();
+        });
+
+        audioPlayer.addEventListener('pause', () => {
+            isPlaying = false;
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            isPlaying = false;
+            // Optionally, clear canvases or reset speaker positions here
+            drawWaveformOnCanvas(canvasInput, canvasCtxInput, null, null, null);
+            drawWaveformOnCanvas(canvasMiddle, canvasCtxMiddle, null, null, null);
+            drawWaveformOnCanvas(canvasBass, canvasCtxBass, null, null, null);
+            drawWaveformOnCanvas(canvasMidBass, canvasCtxMidBass, null, null, null);
+            drawWaveformOnCanvas(canvasTreble, canvasCtxTreble, null, null, null);
+            bassSpeakerCone.style.transform = 'translateY(0px)';
+            bassSpeakerCenterCap.style.transform = 'translateY(0px)';
+            midBassSpeakerCone.style.transform = 'translateY(0px)';
+            midBassSpeakerCenterCap.style.transform = 'translateY(0px)';
+            trebleSpeakerCone.style.transform = 'translateY(0px)';
+            trebleSpeakerCenterCap.style.transform = 'translateY(0px)';
+        });
+        
+        // Inicializa o AudioContext e os nós ao carregar a página
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeAudioNodes(); // Garante que o AudioContext é criado
+            redrawAllArrows();
+            drawWaveformOnCanvas(canvasInput, canvasCtxInput, null, null, null);
+            drawWaveformOnCanvas(canvasMiddle, canvasCtxMiddle, null, null, null);
+            drawWaveformOnCanvas(canvasBass, canvasCtxBass, null, null, null);
+            drawWaveformOnCanvas(canvasMidBass, canvasCtxMidBass, null, null, null);
+            drawWaveformOnCanvas(canvasTreble, canvasCtxTreble, null, null, null);
+        });
+
+        window.addEventListener('resize', redrawAllArrows);
+    </script>
+</body>
+</html>
